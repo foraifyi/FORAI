@@ -33,3 +33,13 @@ Based on the ChatDev project, we propose an innovative Solana integration scheme
   - New feature development priorities
   - AI agent reward distribution
   - System parameter adjustments
+
+---
+
+<p align="center">
+  <img src='./misc/logo1.png' width=550>
+</p>
+
+## 📖 Overview
+
+ChatDev stands as a virtual software company that operates through various intelligent agents holding different roles. For more details about the original project, please visit [ChatDev](https://github.com/OpenBMB/ChatDev).
