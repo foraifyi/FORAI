@@ -39,24 +39,6 @@ pub enum GovernanceTokenError {
     #[error("Invalid amount")]
     InvalidAmount,
 
-    #[error("Invalid expiry time")]
-    InvalidExpiryTime,
-
-    #[error("Invalid daily limit")]
-    InvalidDailyLimit,
-
-    #[error("Mint not enabled")]
-    MintNotEnabled,
-
-    #[error("Transfer not enabled")]
-    TransferNotEnabled,
-
-    #[error("Request already approved")]
-    RequestAlreadyApproved,
-
-    #[error("Request already executed")]
-    RequestAlreadyExecuted,
-
     #[error("Request expired")]
     RequestExpired,
 
@@ -65,18 +47,6 @@ pub enum GovernanceTokenError {
 
     #[error("Daily limit exceeded")]
     DailyLimitExceeded,
-
-    #[error("Transfer limit not set")]
-    TransferLimitNotSet,
-
-    #[error("Supply exceeded")]
-    SupplyExceeded,
-
-    #[error("Insufficient balance")]
-    InsufficientBalance,
-
-    #[error("Invalid fee calculation")]
-    InvalidFeeCalculation,
 
     #[error("Math overflow")]
     MathOverflow,
@@ -92,4 +62,4 @@ impl<T> DecodeError<T> for GovernanceTokenError {
     fn type_of() -> &'static str {
         "GovernanceTokenError"
     }
-} 
+}
