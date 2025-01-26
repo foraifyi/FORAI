@@ -1,40 +1,52 @@
-use solana_program::{program_error::ProgramError, decode_error::DecodeError};
+use solana_program::program_error::ProgramError;
 use thiserror::Error;
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum CrowdfundError {
-    #[error("Account not initialized")]
-    UninitializedAccount,
-
-    #[error("Account already initialized")]
+    #[error("Project already initialized")]
     AlreadyInitialized,
 
-    #[error("Invalid project owner")]
-    InvalidProjectOwner,
+    #[error("Project not initialized")]
+    NotInitialized,
 
-    #[error("Project deadline has passed")]
-    DeadlinePassed,
+    #[error("Project already funded")]
+    AlreadyFunded,
 
-    #[error("Project not fully funded")]
-    NotFullyFunded,
+    #[error("Project funding period ended")]
+    FundingPeriodEnded,
 
-    #[error("Project already completed")]
-    ProjectCompleted,
+    #[error("Project funding goal not reached")]
+    FundingGoalNotReached,
 
-    #[error("Invalid milestone")]
-    InvalidMilestone,
+    #[error("Invalid milestone index")]
+    InvalidMilestoneIndex,
 
-    #[error("Insufficient funds")]
-    InsufficientFunds,
+    #[error("Milestone not completed")]
+    MilestoneNotCompleted,
+
+    #[error("Milestone already completed")]
+    MilestoneAlreadyCompleted,
 
     #[error("Invalid investment amount")]
     InvalidInvestmentAmount,
 
-    #[error("Investment account already exists")]
-    InvestmentExists,
+    #[error("Insufficient funds")]
+    InsufficientFunds,
 
-    #[error("Treasury account mismatch")]
-    TreasuryMismatch,
+    #[error("Invalid authority")]
+    InvalidAuthority,
+
+    #[error("Project not active")]
+    ProjectNotActive,
+
+    #[error("Project already completed")]
+    ProjectAlreadyCompleted,
+
+    #[error("Invalid project status transition")]
+    InvalidStatusTransition,
+
+    #[error("Refund already claimed")]
+    RefundAlreadyClaimed,
 }
 
 impl From<CrowdfundError> for ProgramError {

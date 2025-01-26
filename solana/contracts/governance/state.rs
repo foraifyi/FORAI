@@ -23,24 +23,21 @@ pub struct GovernanceConfig {
 pub struct Proposal {
     pub is_initialized: bool,
     pub proposer: Pubkey,
-    pub start_block: u64,
-    pub end_block: u64,
-    pub description_uri: [u8; 128], // IPFS URI for proposal details
-    pub executable_uri: [u8; 128],  // IPFS URI for executable code
-    pub for_votes: u64,
-    pub against_votes: u64,
-    pub executed: bool,
-    pub canceled: bool,
-    pub execution_time: u64,
+    pub title: [u8; 32],
+    pub description: [u8; 128],
+    pub voting_start: i64,
+    pub voting_end: i64,
+    pub votes_for: u64,
+    pub votes_against: u64,
+    pub status: ProposalStatus,
+    pub execution_params: ExecutionParameters,
 }
 
 #[derive(Debug)]
 pub struct Vote {
-    pub is_initialized: bool,
     pub voter: Pubkey,
-    pub proposal: Pubkey,
-    pub support: bool,
-    pub votes: u64,
+    pub amount: u64,
+    pub direction: VoteDirection,
     pub timestamp: i64,
 }
 
@@ -178,30 +175,17 @@ impl Pack for Proposal {
         let (
             is_initialized,
             proposer,
-            start_block,
-            end_block,
-            description_uri,
-            executable_uri,
-            for_votes,
-            against_votes,
-            executed,
-            canceled,
-            execution_time,
-        ) = array_refs![src, 1, 32, 8, 8, 128, 128, 8, 8, 1, 1, 8];
+            title,
+            description,
+            voting_start,
+            voting_end,
+            votes_for,
+            votes_against,
+            status,
+            execution_params,
+        ) = array_refs![src, 1, 32, 32, 128, 128, 8, 8, 1, 1, 8];
 
         let is_initialized = match is_initialized[0] {
-            0 => false,
-            1 => true,
-            _ => return Err(ProgramError::InvalidAccountData),
-        };
-
-        let executed = match executed[0] {
-            0 => false,
-            1 => true,
-            _ => return Err(ProgramError::InvalidAccountData),
-        };
-
-        let canceled = match canceled[0] {
             0 => false,
             1 => true,
             _ => return Err(ProgramError::InvalidAccountData),
@@ -210,15 +194,14 @@ impl Pack for Proposal {
         Ok(Proposal {
             is_initialized,
             proposer: Pubkey::new_from_array(*proposer),
-            start_block: u64::from_le_bytes(*start_block),
-            end_block: u64::from_le_bytes(*end_block),
-            description_uri: *description_uri,
-            executable_uri: *executable_uri,
-            for_votes: u64::from_le_bytes(*for_votes),
-            against_votes: u64::from_le_bytes(*against_votes),
-            executed,
-            canceled,
-            execution_time: u64::from_le_bytes(*execution_time),
+            title: *title,
+            description: *description,
+            voting_start: i64::from_le_bytes(*voting_start),
+            voting_end: i64::from_le_bytes(*voting_end),
+            votes_for: u64::from_le_bytes(*votes_for),
+            votes_against: u64::from_le_bytes(*votes_against),
+            status: ProposalStatus::from_le_bytes(*status),
+            execution_params: ExecutionParameters::from_le_bytes(*execution_params),
         })
     }
 
@@ -227,28 +210,26 @@ impl Pack for Proposal {
         let (
             is_initialized_dst,
             proposer_dst,
-            start_block_dst,
-            end_block_dst,
-            description_uri_dst,
-            executable_uri_dst,
-            for_votes_dst,
-            against_votes_dst,
-            executed_dst,
-            canceled_dst,
-            execution_time_dst,
-        ) = mut_array_refs![dst, 1, 32, 8, 8, 128, 128, 8, 8, 1, 1, 8];
+            title_dst,
+            description_dst,
+            voting_start_dst,
+            voting_end_dst,
+            votes_for_dst,
+            votes_against_dst,
+            status_dst,
+            execution_params_dst,
+        ) = mut_array_refs![dst, 1, 32, 32, 128, 128, 8, 8, 1, 1, 8];
 
         is_initialized_dst[0] = self.is_initialized as u8;
         proposer_dst.copy_from_slice(self.proposer.as_ref());
-        *start_block_dst = self.start_block.to_le_bytes();
-        *end_block_dst = self.end_block.to_le_bytes();
-        description_uri_dst.copy_from_slice(&self.description_uri);
-        executable_uri_dst.copy_from_slice(&self.executable_uri);
-        *for_votes_dst = self.for_votes.to_le_bytes();
-        *against_votes_dst = self.against_votes.to_le_bytes();
-        executed_dst[0] = self.executed as u8;
-        canceled_dst[0] = self.canceled as u8;
-        *execution_time_dst = self.execution_time.to_le_bytes();
+        title_dst.copy_from_slice(&self.title);
+        description_dst.copy_from_slice(&self.description);
+        *voting_start_dst = self.voting_start.to_le_bytes();
+        *voting_end_dst = self.voting_end.to_le_bytes();
+        *votes_for_dst = self.votes_for.to_le_bytes();
+        *votes_against_dst = self.votes_against.to_le_bytes();
+        *status_dst = self.status.to_le_bytes();
+        *execution_params_dst = self.execution_params.to_le_bytes();
     }
 }
 
@@ -267,9 +248,8 @@ impl Pack for Vote {
         let (
             is_initialized,
             voter,
-            proposal,
-            support,
-            votes,
+            amount,
+            direction,
             timestamp,
         ) = array_refs![src, 1, 32, 32, 1, 8, 8];
 
@@ -279,18 +259,17 @@ impl Pack for Vote {
             _ => return Err(ProgramError::InvalidAccountData),
         };
 
-        let support = match support[0] {
-            0 => false,
-            1 => true,
+        let direction = match direction[0] {
+            0 => VoteDirection::Against,
+            1 => VoteDirection::For,
             _ => return Err(ProgramError::InvalidAccountData),
         };
 
         Ok(Vote {
             is_initialized,
             voter: Pubkey::new_from_array(*voter),
-            proposal: Pubkey::new_from_array(*proposal),
-            support,
-            votes: u64::from_le_bytes(*votes),
+            amount: u64::from_le_bytes(*amount),
+            direction,
             timestamp: i64::from_le_bytes(*timestamp),
         })
     }
@@ -300,17 +279,15 @@ impl Pack for Vote {
         let (
             is_initialized_dst,
             voter_dst,
-            proposal_dst,
-            support_dst,
-            votes_dst,
+            amount_dst,
+            direction_dst,
             timestamp_dst,
         ) = mut_array_refs![dst, 1, 32, 32, 1, 8, 8];
 
         is_initialized_dst[0] = self.is_initialized as u8;
         voter_dst.copy_from_slice(self.voter.as_ref());
-        proposal_dst.copy_from_slice(self.proposal.as_ref());
-        support_dst[0] = self.support as u8;
-        *votes_dst = self.votes.to_le_bytes();
+        *amount_dst = self.amount.to_le_bytes();
+        direction_dst[0] = self.direction.to_le_bytes()[0];
         *timestamp_dst = self.timestamp.to_le_bytes();
     }
 }

@@ -9,8 +9,17 @@ pub enum IncentiveError {
     #[error("Account already initialized")]
     AlreadyInitialized,
     
-    #[error("Invalid program authority")]
-    InvalidProgramAuthority,
+    #[error("Invalid authority")]
+    InvalidAuthority,
+    
+    #[error("Invalid reputation score")]
+    InvalidReputationScore,
+    
+    #[error("Invalid reward amount")]
+    InvalidRewardAmount,
+    
+    #[error("Invalid penalty amount")]
+    InvalidPenaltyAmount,
     
     #[error("Insufficient funds")]
     InsufficientFunds,
@@ -19,5 +28,11 @@ pub enum IncentiveError {
 impl From<IncentiveError> for ProgramError {
     fn from(e: IncentiveError) -> Self {
         ProgramError::Custom(e as u32)
+    }
+}
+
+impl<T> DecodeError<T> for IncentiveError {
+    fn type_of() -> &'static str {
+        "IncentiveError"
     }
 } 

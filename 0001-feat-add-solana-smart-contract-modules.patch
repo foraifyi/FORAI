@@ -1,0 +1,142 @@
+From e23685183f29dc2de8b0c713aec4259f26349c16 Mon Sep 17 00:00:00 2001
+From: foraifyi <foraifyi@gmail.com>
+Date: Sun, 26 Jan 2025 12:15:41 +0800
+Subject: [PATCH] feat: add solana smart contract modules
+
+---
+ solana/contracts/governance_token/error.rs | 65 ++++++++++++++++++++++
+ solana/contracts/governance_token/state.rs | 50 +++++++++++++++++
+ 2 files changed, 115 insertions(+)
+ create mode 100644 solana/contracts/governance_token/error.rs
+ create mode 100644 solana/contracts/governance_token/state.rs
+
+diff --git a/solana/contracts/governance_token/error.rs b/solana/contracts/governance_token/error.rs
+new file mode 100644
+index 0000000..0efd13b
+--- /dev/null
++++ b/solana/contracts/governance_token/error.rs
+@@ -0,0 +1,65 @@
++use solana_program::{program_error::ProgramError, decode_error::DecodeError};
++use thiserror::Error;
++
++#[derive(Error, Debug, Copy, Clone)]
++pub enum GovernanceTokenError {
++    #[error("Account not initialized")]
++    UninitializedAccount,
++
++    #[error("Account already initialized")]
++    AlreadyInitialized,
++
++    #[error("Invalid authority")]
++    InvalidAuthority,
++
++    #[error("Invalid requester")]
++    InvalidRequester,
++
++    #[error("Invalid recipient")]
++    InvalidRecipient,
++
++    #[error("Invalid token mint")]
++    InvalidTokenMint,
++
++    #[error("Invalid token account")]
++    InvalidTokenAccount,
++
++    #[error("Invalid treasury account")]
++    InvalidTreasuryAccount,
++
++    #[error("Invalid mint request")]
++    InvalidMintRequest,
++
++    #[error("Invalid transfer limit")]
++    InvalidTransferLimit,
++
++    #[error("Invalid decimals")]
++    InvalidDecimals,
++
++    #[error("Invalid amount")]
++    InvalidAmount,
++
++    #[error("Request expired")]
++    RequestExpired,
++
++    #[error("Request not approved")]
++    RequestNotApproved,
++
++    #[error("Daily limit exceeded")]
++    DailyLimitExceeded,
++
++    #[error("Math overflow")]
++    MathOverflow,
++}
++
++impl From<GovernanceTokenError> for ProgramError {
++    fn from(e: GovernanceTokenError) -> Self {
++        ProgramError::Custom(e as u32)
++    }
++}
++
++impl<T> DecodeError<T> for GovernanceTokenError {
++    fn type_of() -> &'static str {
++        "GovernanceTokenError"
++    }
++}
+diff --git a/solana/contracts/governance_token/state.rs b/solana/contracts/governance_token/state.rs
+new file mode 100644
+index 0000000..05aeafe
+--- /dev/null
++++ b/solana/contracts/governance_token/state.rs
+@@ -0,0 +1,50 @@
++use solana_program::{
++    program_pack::{IsInitialized, Pack, Sealed},
++    program_error::ProgramError,
++    pubkey::Pubkey,
++};
++use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
++
++#[derive(Debug)]
++pub struct TokenConfig {
++    pub is_initialized: bool,
++    pub authority: Pubkey,
++    pub token_mint: Pubkey,
++    pub treasury: Pubkey,
++    pub total_supply: u64,
++    pub circulating_supply: u64,
++    pub decimals: u8,
++    pub transfer_enabled: bool,
++    pub mint_enabled: bool,
++}
++
++#[derive(Debug)]
++pub struct MintRequest {
++    pub is_initialized: bool,
++    pub requester: Pubkey,
++    pub recipient: Pubkey,
++    pub amount: u64,
++    pub request_time: i64,
++    pub expiry_time: i64,
++    pub is_approved: bool,
++    pub is_executed: bool,
++}
++
++#[derive(Debug)]
++pub struct TransferLimit {
++    pub is_initialized: bool,
++    pub owner: Pubkey,
++    pub daily_limit: u64,
++    pub transferred_today: u64,
++    pub last_day: i64,
++    pub is_exempt: bool,
++}
++
++impl Sealed for TokenConfig {}
++impl IsInitialized for TokenConfig {
++    fn is_initialized(&self) -> bool {
++        self.is_initialized
++    }
++}
++
++// ... 实现 Pack traits
+-- 
+2.48.0
+

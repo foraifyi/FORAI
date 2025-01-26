@@ -3,15 +3,13 @@ use solana_program::{
     entrypoint,
     entrypoint::ProgramResult,
     pubkey::Pubkey,
-    program_error::ProgramError,
 };
 
 pub mod error;
 pub mod instruction;
 pub mod processor;
 pub mod state;
-
-use processor::Processor;
+pub mod utils;
 
 entrypoint!(process_instruction);
 
@@ -20,5 +18,5 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    Processor::process(program_id, accounts, instruction_data)
+    processor::Processor::process(program_id, accounts, instruction_data)
 } 

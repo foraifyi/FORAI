@@ -5,12 +5,15 @@ use solana_program::{
     pubkey::Pubkey,
     program_pack::Pack,
     sysvar::{clock::Clock, Sysvar},
+    rent::Rent,
 };
 
 use crate::{
-    state::{Project, Investment},
     error::CrowdfundError,
     instruction::CrowdfundInstruction,
+    state::{Project, ProjectStatus, Investment, Milestone},
+    event::CrowdfundEvent,
+    security::SecurityChecks,
 };
 
 pub struct Processor;
@@ -24,24 +27,49 @@ impl Processor {
         let instruction = CrowdfundInstruction::unpack(instruction_data)?;
 
         match instruction {
-            CrowdfundInstruction::InitializeProject { target_amount, deadline, milestone_count } => {
-                Self::process_initialize_project(program_id, accounts, target_amount, deadline, milestone_count)
+            CrowdfundInstruction::InitializeProject {
+                title,
+                description,
+                target_amount,
+                start_time,
+                end_time,
+                milestones,
+            } => {
+                Self::process_initialize_project(
+                    accounts,
+                    title,
+                    description,
+                    target_amount,
+                    start_time,
+                    end_time,
+                    milestones,
+                    program_id,
+                )
             }
             CrowdfundInstruction::Invest { amount } => {
-                Self::process_invest(program_id, accounts, amount)
+                Self::process_invest(accounts, amount)
             }
-            CrowdfundInstruction::ReleaseMilestone => {
-                Self::process_release_milestone(program_id, accounts)
+            CrowdfundInstruction::CompleteMilestone { milestone_index } => {
+                Self::process_complete_milestone(accounts, milestone_index)
+            }
+            CrowdfundInstruction::ClaimRefund => {
+                Self::process_claim_refund(accounts)
+            }
+            CrowdfundInstruction::CancelProject => {
+                Self::process_cancel_project(accounts)
             }
         }
     }
 
     fn process_initialize_project(
-        program_id: &Pubkey,
         accounts: &[AccountInfo],
+        title: [u8; 32],
+        description: [u8; 64],
         target_amount: u64,
-        deadline: i64,
-        milestone_count: u8,
+        start_time: i64,
+        end_time: i64,
+        milestones: Vec<Milestone>,
+        program_id: &Pubkey,
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let project_account = next_account_info(account_info_iter)?;
@@ -50,6 +78,10 @@ impl Processor {
 
         if !owner.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        if project_account.owner != program_id {
+            return Err(ProgramError::IncorrectProgramId);
         }
 
         let mut project = Project::unpack_unchecked(&project_account.data.borrow())?;
@@ -57,141 +89,220 @@ impl Processor {
             return Err(CrowdfundError::AlreadyInitialized.into());
         }
 
+        let clock = Clock::get()?;
+        if start_time < clock.unix_timestamp {
+            return Err(CrowdfundError::InvalidStatusTransition.into());
+        }
+
+        if end_time <= start_time {
+            return Err(CrowdfundError::InvalidStatusTransition.into());
+        }
+
         project.is_initialized = true;
         project.owner = *owner.key;
-        project.treasury = *treasury.key;
+        project.title = title;
+        project.description = description;
         project.target_amount = target_amount;
         project.current_amount = 0;
-        project.deadline = deadline;
-        project.is_completed = false;
-        project.milestone_count = milestone_count;
+        project.start_time = start_time;
+        project.end_time = end_time;
+        project.milestones = milestones;
         project.current_milestone = 0;
+        project.status = ProjectStatus::Active;
+        project.treasury = *treasury.key;
+
+        SecurityChecks::verify_account_ownership(project_account, program_id)?;
+        SecurityChecks::verify_signer(owner)?;
+        SecurityChecks::verify_rent_exempt(project_account, &Rent::get()?)?;
+        SecurityChecks::verify_account_data_len(project_account, Project::LEN)?;
+        SecurityChecks::verify_time_constraints(Clock::get()?.unix_timestamp, start_time, end_time)?;
+
+        CrowdfundEvent::ProjectCreated {
+            project: project_account.key,
+            owner: owner.key,
+            target_amount,
+            milestone_count: milestones.len() as u8,
+        }.emit();
 
         Project::pack(project, &mut project_account.data.borrow_mut())?;
         Ok(())
     }
 
     fn process_invest(
-        program_id: &Pubkey,
         accounts: &[AccountInfo],
         amount: u64,
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let project_account = next_account_info(account_info_iter)?;
-        let investor = next_account_info(account_info_iter)?;
         let investment_account = next_account_info(account_info_iter)?;
+        let investor = next_account_info(account_info_iter)?;
         let treasury = next_account_info(account_info_iter)?;
-        let clock = Clock::get()?;
 
-        // Verify investor signature
         if !investor.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        // Load project data
         let mut project = Project::unpack(&project_account.data.borrow())?;
-        
-        // Check project is still active
-        if project.is_completed {
-            return Err(CrowdfundError::ProjectCompleted.into());
-        }
-        if clock.unix_timestamp >= project.deadline {
-            return Err(CrowdfundError::DeadlinePassed.into());
+        if project.status != ProjectStatus::Active {
+            return Err(CrowdfundError::ProjectNotActive.into());
         }
 
-        // Verify treasury account
-        if project.treasury != *treasury.key {
-            return Err(CrowdfundError::TreasuryMismatch.into());
+        let clock = Clock::get()?;
+        if clock.unix_timestamp >= project.end_time {
+            return Err(CrowdfundError::FundingPeriodEnded.into());
         }
 
-        // Check investment amount
-        if amount == 0 {
-            return Err(CrowdfundError::InvalidInvestmentAmount.into());
-        }
+        SecurityChecks::verify_sufficient_funds(investor, amount)?;
+        SecurityChecks::verify_unique_accounts(&[project_account, investment_account, investor, treasury])?;
 
-        // Check investor has enough funds
-        if investor.lamports() < amount {
-            return Err(CrowdfundError::InsufficientFunds.into());
-        }
+        // Transfer investment amount
+        **investor.try_borrow_mut_lamports()? -= amount;
+        **treasury.try_borrow_mut_lamports()? += amount;
 
-        // Create investment record
-        let mut investment = Investment::unpack_unchecked(&investment_account.data.borrow())?;
-        if investment.is_initialized {
-            return Err(CrowdfundError::InvestmentExists.into());
-        }
-
-        // Transfer funds
-        **investor.lamports.borrow_mut() -= amount;
-        **treasury.lamports.borrow_mut() += amount;
+        // Record investment
+        let investment = Investment {
+            investor: *investor.key,
+            project: *project_account.key,
+            amount,
+            timestamp: clock.unix_timestamp,
+            is_refunded: false,
+        };
+        Investment::pack(investment, &mut investment_account.data.borrow_mut())?;
 
         // Update project state
         project.current_amount += amount;
+        if project.current_amount >= project.target_amount {
+            project.status = ProjectStatus::Funded;
+        }
         Project::pack(project, &mut project_account.data.borrow_mut())?;
 
-        // Initialize investment record
-        investment.is_initialized = true;
-        investment.investor = *investor.key;
-        investment.project = *project_account.key;
-        investment.amount = amount;
-        investment.timestamp = clock.unix_timestamp;
-        Investment::pack(investment, &mut investment_account.data.borrow_mut())?;
+        CrowdfundEvent::InvestmentMade {
+            project: project_account.key,
+            investor: investor.key,
+            amount,
+            timestamp: Clock::get()?.unix_timestamp,
+        }.emit();
 
         Ok(())
     }
 
-    fn process_release_milestone(
-        program_id: &Pubkey,
+    fn process_complete_milestone(
         accounts: &[AccountInfo],
+        milestone_index: u8,
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let project_account = next_account_info(account_info_iter)?;
         let owner = next_account_info(account_info_iter)?;
         let treasury = next_account_info(account_info_iter)?;
-        let clock = Clock::get()?;
 
-        // Verify project owner
         if !owner.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        // Load project data
         let mut project = Project::unpack(&project_account.data.borrow())?;
-        
-        // Verify owner
         if project.owner != *owner.key {
-            return Err(CrowdfundError::InvalidProjectOwner.into());
+            return Err(CrowdfundError::InvalidAuthority.into());
         }
 
-        // Verify treasury
-        if project.treasury != *treasury.key {
-            return Err(CrowdfundError::TreasuryMismatch.into());
+        if project.status != ProjectStatus::Funded {
+            return Err(CrowdfundError::ProjectNotActive.into());
         }
 
-        // Check project status
-        if project.is_completed {
-            return Err(CrowdfundError::ProjectCompleted.into());
-        }
-        if project.current_amount < project.target_amount {
-            return Err(CrowdfundError::NotFullyFunded.into());
+        if milestone_index as usize >= project.milestones.len() {
+            return Err(CrowdfundError::InvalidMilestoneIndex.into());
         }
 
-        // Calculate milestone payment
-        let milestone_payment = project.target_amount / (project.milestone_count as u64);
-        if treasury.lamports() < milestone_payment {
-            return Err(CrowdfundError::InsufficientFunds.into());
+        let milestone = &mut project.milestones[milestone_index as usize];
+        if milestone.is_completed {
+            return Err(CrowdfundError::MilestoneAlreadyCompleted.into());
         }
 
-        // Transfer milestone payment
-        **treasury.lamports.borrow_mut() -= milestone_payment;
-        **owner.lamports.borrow_mut() += milestone_payment;
+        let clock = Clock::get()?;
+        milestone.completion_time = clock.unix_timestamp;
+        milestone.is_completed = true;
 
-        // Update project state
-        project.current_milestone += 1;
-        if project.current_milestone >= project.milestone_count {
-            project.is_completed = true;
+        // Release milestone funds
+        if !milestone.is_funds_released {
+            **treasury.try_borrow_mut_lamports()? -= milestone.target_amount;
+            **owner.try_borrow_mut_lamports()? += milestone.target_amount;
+            milestone.is_funds_released = true;
+        }
+
+        // Check if project is completed
+        if project.milestones.iter().all(|m| m.is_completed) {
+            project.status = ProjectStatus::Completed;
         }
 
         Project::pack(project, &mut project_account.data.borrow_mut())?;
+        Ok(())
+    }
+
+    fn process_claim_refund(accounts: &[AccountInfo]) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let project_account = next_account_info(account_info_iter)?;
+        let investment_account = next_account_info(account_info_iter)?;
+        let investor = next_account_info(account_info_iter)?;
+        let treasury = next_account_info(account_info_iter)?;
+
+        if !investor.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        let project = Project::unpack(&project_account.data.borrow())?;
+        let mut investment = Investment::unpack(&investment_account.data.borrow())?;
+
+        if investment.investor != *investor.key {
+            return Err(CrowdfundError::InvalidAuthority.into());
+        }
+
+        if investment.is_refunded {
+            return Err(CrowdfundError::RefundAlreadyClaimed.into());
+        }
+
+        let clock = Clock::get()?;
+        if clock.unix_timestamp < project.end_time {
+            return Err(CrowdfundError::ProjectNotActive.into());
+        }
+
+        if project.status != ProjectStatus::Failed && project.status != ProjectStatus::Cancelled {
+            return Err(CrowdfundError::InvalidStatusTransition.into());
+        }
+
+        // Process refund
+        **treasury.try_borrow_mut_lamports()? -= investment.amount;
+        **investor.try_borrow_mut_lamports()? += investment.amount;
+        investment.is_refunded = true;
+
+        Investment::pack(investment, &mut investment_account.data.borrow_mut())?;
+        Ok(())
+    }
+
+    fn process_cancel_project(accounts: &[AccountInfo]) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let project_account = next_account_info(account_info_iter)?;
+        let owner = next_account_info(account_info_iter)?;
+
+        if !owner.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        let mut project = Project::unpack(&project_account.data.borrow())?;
+        if project.owner != *owner.key {
+            return Err(CrowdfundError::InvalidAuthority.into());
+        }
+
+        if project.status != ProjectStatus::Active {
+            return Err(CrowdfundError::InvalidStatusTransition.into());
+        }
+
+        let clock = Clock::get()?;
+        if clock.unix_timestamp >= project.end_time {
+            return Err(CrowdfundError::FundingPeriodEnded.into());
+        }
+
+        project.status = ProjectStatus::Cancelled;
+        Project::pack(project, &mut project_account.data.borrow_mut())?;
+
         Ok(())
     }
 } 

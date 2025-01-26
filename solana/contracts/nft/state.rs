@@ -7,21 +7,24 @@ use solana_program::{
 pub struct SoftwareNFT {
     pub is_initialized: bool,
     pub owner: Pubkey,
-    pub project: Pubkey,
-    pub metadata_uri: [u8; 128],  // IPFS URI for software metadata
-    pub version: u32,
-    pub is_transferable: bool,
-    pub can_modify: bool,
-    pub royalty_percentage: u8,    // in basis points (0-10000)
+    pub metadata: Metadata,
+    pub usage_rights: UsageRights,
+    pub version_history: Vec<Version>,
+    pub license_type: LicenseType,
 }
 
 #[derive(Debug)]
 pub struct Metadata {
     pub name: [u8; 32],
-    pub symbol: [u8; 8],
-    pub code_uri: [u8; 128],      // IPFS URI for actual code
-    pub license: [u8; 32],
-    pub description: [u8; 256],
+    pub description: [u8; 64],
+    pub repository: [u8; 64],
+    pub created_at: i64,
+}
+
+pub struct UsageRights {
+    pub can_modify: bool,
+    pub can_redistribute: bool,
+    pub can_sublicense: bool,
 }
 
 impl Sealed for SoftwareNFT {}

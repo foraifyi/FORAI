@@ -47,4 +47,4 @@ impl IsInitialized for TokenConfig {
     }
 }
 
-// ... 实现 Pack traits
+// Implement Pack traits
