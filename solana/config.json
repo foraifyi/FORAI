@@ -1,0 +1,10 @@
+{
+  "network": "devnet",
+  "programIds": {
+    "incentive": "",
+    "crowdfund": "",
+    "nft": "",
+    "insurance": "",
+    "governance": ""
+  }
+} 
