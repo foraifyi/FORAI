@@ -1,45 +1,137 @@
-# FORAI: AI-Powered Software Development with Solana Integration
+# FORAI Project
 
-Based on the ChatDev project, we propose an innovative Solana integration scheme that includes the following key features:
+FORAI is a comprehensive DeFi platform built on Solana, integrating crowdfunding, NFT, insurance, and governance functionalities.
 
-## 1. AI Agent Incentive Mechanism
+## Project Architecture
 
-- Each AI agent (programmers, testers, etc.) has its own Solana wallet
-- Token rewards based on contribution levels
-- Reputation system that provides additional rewards for outstanding AI agents
+```mermaid
+graph TD
+    A[FORAI Platform] --> B[Crowdfunding System]
+    A --> C[NFT System]
+    A --> D[Insurance Pool]
+    A --> E[Governance System]
+    
+    B --> B1[Project Creation]
+    B --> B2[Investment Management]
+    B --> B3[Milestone Tracking]
+    
+    C --> C1[NFT Minting]
+    C --> C2[Trading]
+    C --> C3[Royalty Management]
+    
+    D --> D1[Pool Management]
+    D --> D2[Policy Creation]
+    D --> D3[Claims Processing]
+    
+    E --> E1[Proposal Creation]
+    E --> E2[Voting System]
+    E --> E3[Execution System]
+```
 
-## 2. Project Crowdfunding System
+## Technical Stack
 
-- Users can crowdfund software projects using Solana tokens
-- Milestone-based fund release mechanism
-- Investors receive project tokens or revenue sharing upon project completion
+### Smart Contracts (Solana Programs)
+- **Language**: Rust
+- **Framework**: Solana Program Framework
+- **Key Components**:
+  - Account Management
+  - State Management
+  - Instruction Processing
+  - Security Validation
+  - Event Emission
 
-## 3. Software as NFTs
+### Architecture Components
 
-- Generated software code is packaged as NFTs
-- NFT holders gain software usage and secondary development rights
-- Supported by an NFT trading marketplace
+1. **Core Modules**
+   - Crowdfunding Contract
+   - NFT Contract
+   - Insurance Pool Contract
+   - Governance Contract
 
-## 4. Code Quality Insurance Pool
+2. **State Management**
+   ```
+   ├── State Definitions
+   │   ├── Project State
+   │   ├── NFT Metadata
+   │   ├── Insurance Policy
+   │   └── Governance Config
+   ```
 
-- Establishment of a Solana token insurance pool
-- Compensation for users in case of major bugs in generated code
-- AI agents must stake tokens to participate in development
+3. **Instruction Processing**
+   ```
+   ├── Instructions
+   │   ├── Initialize
+   │   ├── Execute
+   │   ├── Update
+   │   └── Close
+   ```
 
-## 5. Governance Mechanism
+4. **Security Layer**
+   ```
+   ├── Security
+   │   ├── Access Control
+   │   ├── Input Validation
+   │   ├── State Validation
+   │   └── Fund Safety
+   ```
 
-- Issuance of governance tokens
-- Token holders can vote on:
-  - New feature development priorities
-  - AI agent reward distribution
-  - System parameter adjustments
+## Development Progress (60% Complete)
 
----
+### Completed Features
+- ✅ Basic framework implementation
+- ✅ Core state definitions
+- ✅ Instruction processing logic
+- ✅ Security validation framework
+- ✅ Event system
 
-<p align="center">
-  <img src='./misc/logo1.png' width=550>
-</p>
+### In Progress
+- 🚧 Insurance pool implementation
+- 🚧 NFT trading functionality
+- 🚧 Governance voting mechanism
+- 🚧 Cross-module integration
 
-## 📖 Overview
+### Pending
+- ⏳ Advanced security features
+- ⏳ Performance optimization
+- ⏳ Complete testing suite
+- ⏳ Documentation finalization
 
-ChatDev stands as a virtual software company that operates through various intelligent agents holding different roles. For more details about the original project, please visit [ChatDev](https://github.com/OpenBMB/ChatDev).
+## Development Notes
+
+Our development team is actively working on implementing the remaining features. We've faced some unique challenges:
+
+1. **Code Base Translation**
+   - Original codebase comments were in Chinese
+   - Ongoing effort to translate and understand legacy code
+   - Maintaining consistency in documentation
+
+2. **Cross-Cultural Development**
+   - International development team
+   - Bridging communication gaps
+   - Standardizing documentation format
+
+3. **Technical Challenges**
+   - Complex state management in Solana
+   - Cross-program invocation handling
+   - Optimizing for Solana's constraints
+
+## Next Steps
+
+1. Complete the insurance pool implementation
+2. Finalize NFT trading functionality
+3. Implement governance voting mechanism
+4. Integrate all modules
+5. Comprehensive testing
+6. Documentation and code review
+
+## Contributing
+
+We welcome contributions from the community. Please ensure to:
+1. Follow the coding standards
+2. Provide comprehensive documentation
+3. Include test cases
+4. Submit detailed PR descriptions
+
+## License
+
+[License details to be added]

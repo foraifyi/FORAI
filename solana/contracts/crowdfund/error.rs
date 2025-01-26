@@ -21,11 +21,8 @@ pub enum CrowdfundError {
     #[error("Invalid milestone index")]
     InvalidMilestoneIndex,
 
-    #[error("Milestone not completed")]
-    MilestoneNotCompleted,
-
-    #[error("Milestone already completed")]
-    MilestoneAlreadyCompleted,
+    #[error("Invalid milestone sequence")]
+    InvalidMilestoneSequence,
 
     #[error("Invalid investment amount")]
     InvalidInvestmentAmount,
@@ -33,20 +30,32 @@ pub enum CrowdfundError {
     #[error("Insufficient funds")]
     InsufficientFunds,
 
+    #[error("Insufficient project funds")]
+    InsufficientProjectFunds,
+
     #[error("Invalid authority")]
     InvalidAuthority,
 
     #[error("Project not active")]
     ProjectNotActive,
 
-    #[error("Project already completed")]
-    ProjectAlreadyCompleted,
+    #[error("Project not started")]
+    ProjectNotStarted,
+
+    #[error("Project ended")]
+    ProjectEnded,
 
     #[error("Invalid project status transition")]
     InvalidStatusTransition,
 
     #[error("Refund already claimed")]
     RefundAlreadyClaimed,
+
+    #[error("Account not rent exempt")]
+    NotRentExempt,
+
+    #[error("Duplicate account in instruction")]
+    DuplicateAccount,
 }
 
 impl From<CrowdfundError> for ProgramError {

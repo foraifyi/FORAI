@@ -3,6 +3,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     sysvar::{rent::Rent, Sysvar},
+    msg,
 };
 use crate::error::CrowdfundError;
 
@@ -12,15 +13,17 @@ impl SecurityChecks {
     pub fn verify_account_ownership(
         account: &AccountInfo,
         expected_owner: &Pubkey,
-    ) -> ProgramResult {
+    ) -> Result<(), ProgramError> {
         if account.owner != expected_owner {
+            msg!("Invalid account owner");
             return Err(ProgramError::IncorrectProgramId);
         }
         Ok(())
     }
 
-    pub fn verify_signer(account: &AccountInfo) -> ProgramResult {
+    pub fn verify_signer(account: &AccountInfo) -> Result<(), ProgramError> {
         if !account.is_signer {
+            msg!("Missing required signature");
             return Err(ProgramError::MissingRequiredSignature);
         }
         Ok(())
@@ -29,8 +32,9 @@ impl SecurityChecks {
     pub fn verify_rent_exempt(
         account: &AccountInfo,
         rent: &Rent,
-    ) -> ProgramResult {
+    ) -> Result<(), ProgramError> {
         if !rent.is_exempt(account.lamports(), account.data_len()) {
+            msg!("Account not rent exempt");
             return Err(CrowdfundError::NotRentExempt.into());
         }
         Ok(())
@@ -39,8 +43,9 @@ impl SecurityChecks {
     pub fn verify_account_data_len(
         account: &AccountInfo,
         expected_len: usize,
-    ) -> ProgramResult {
+    ) -> Result<(), ProgramError> {
         if account.data_len() != expected_len {
+            msg!("Invalid account data length");
             return Err(ProgramError::InvalidAccountData);
         }
         Ok(())
@@ -49,17 +54,19 @@ impl SecurityChecks {
     pub fn verify_sufficient_funds(
         account: &AccountInfo,
         required_amount: u64,
-    ) -> ProgramResult {
+    ) -> Result<(), ProgramError> {
         if account.lamports() < required_amount {
+            msg!("Insufficient funds");
             return Err(CrowdfundError::InsufficientFunds.into());
         }
         Ok(())
     }
 
-    pub fn verify_unique_accounts(accounts: &[&AccountInfo]) -> ProgramResult {
-        for (i, account1) in accounts.iter().enumerate() {
-            for account2 in accounts.iter().skip(i + 1) {
-                if account1.key == account2.key {
+    pub fn verify_unique_accounts(accounts: &[&AccountInfo]) -> Result<(), ProgramError> {
+        for (i, account) in accounts.iter().enumerate() {
+            for other_account in accounts.iter().skip(i + 1) {
+                if account.key == other_account.key {
+                    msg!("Duplicate account detected");
                     return Err(CrowdfundError::DuplicateAccount.into());
                 }
             }
@@ -68,10 +75,11 @@ impl SecurityChecks {
     }
 
     pub fn verify_milestone_sequence(
-        milestone_index: u8,
         current_milestone: u8,
-    ) -> ProgramResult {
-        if milestone_index != current_milestone {
+        requested_milestone: u8,
+    ) -> Result<(), ProgramError> {
+        if requested_milestone != current_milestone {
+            msg!("Invalid milestone sequence");
             return Err(CrowdfundError::InvalidMilestoneSequence.into());
         }
         Ok(())
@@ -79,9 +87,10 @@ impl SecurityChecks {
 
     pub fn verify_milestone_amount(
         milestone_amount: u64,
-        total_raised: u64,
-    ) -> ProgramResult {
-        if milestone_amount > total_raised {
+        available_amount: u64,
+    ) -> Result<(), ProgramError> {
+        if milestone_amount > available_amount {
+            msg!("Insufficient project funds for milestone");
             return Err(CrowdfundError::InsufficientProjectFunds.into());
         }
         Ok(())
@@ -91,11 +100,13 @@ impl SecurityChecks {
         current_time: i64,
         start_time: i64,
         end_time: i64,
-    ) -> ProgramResult {
+    ) -> Result<(), ProgramError> {
         if current_time < start_time {
+            msg!("Project has not started");
             return Err(CrowdfundError::ProjectNotStarted.into());
         }
         if current_time > end_time {
+            msg!("Project has ended");
             return Err(CrowdfundError::ProjectEnded.into());
         }
         Ok(())

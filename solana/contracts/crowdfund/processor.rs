@@ -6,6 +6,7 @@ use solana_program::{
     program_pack::Pack,
     sysvar::{clock::Clock, Sysvar},
     rent::Rent,
+    msg,
 };
 
 use crate::{
@@ -173,14 +174,20 @@ impl Processor {
         project.current_amount += amount;
         if project.current_amount >= project.target_amount {
             project.status = ProjectStatus::Funded;
+            
+            CrowdfundEvent::ProjectFunded {
+                project: project_account.key,
+                total_amount: project.current_amount,
+            }.emit();
         }
+
         Project::pack(project, &mut project_account.data.borrow_mut())?;
 
         CrowdfundEvent::InvestmentMade {
             project: project_account.key,
             investor: investor.key,
             amount,
-            timestamp: Clock::get()?.unix_timestamp,
+            timestamp: clock.unix_timestamp,
         }.emit();
 
         Ok(())
@@ -231,9 +238,21 @@ impl Processor {
         // Check if project is completed
         if project.milestones.iter().all(|m| m.is_completed) {
             project.status = ProjectStatus::Completed;
+            
+            CrowdfundEvent::ProjectCompleted {
+                project: project_account.key,
+                completion_time: Clock::get()?.unix_timestamp,
+            }.emit();
         }
 
         Project::pack(project, &mut project_account.data.borrow_mut())?;
+
+        CrowdfundEvent::MilestoneCompleted {
+            project: project_account.key,
+            milestone_index,
+            amount: milestone.target_amount,
+        }.emit();
+
         Ok(())
     }
 
@@ -251,21 +270,28 @@ impl Processor {
         let project = Project::unpack(&project_account.data.borrow())?;
         let mut investment = Investment::unpack(&investment_account.data.borrow())?;
 
+        // Verify investment belongs to the investor
         if investment.investor != *investor.key {
             return Err(CrowdfundError::InvalidAuthority.into());
         }
 
-        if investment.is_refunded {
-            return Err(CrowdfundError::RefundAlreadyClaimed.into());
+        // Verify investment belongs to the project
+        if investment.project != *project_account.key {
+            return Err(ProgramError::InvalidInstructionData.into());
         }
 
+        // Check if refund is allowed
         let clock = Clock::get()?;
         if clock.unix_timestamp < project.end_time {
-            return Err(CrowdfundError::ProjectNotActive.into());
+            return Err(CrowdfundError::FundingPeriodEnded.into());
         }
 
         if project.status != ProjectStatus::Failed && project.status != ProjectStatus::Cancelled {
-            return Err(CrowdfundError::InvalidStatusTransition.into());
+            return Err(CrowdfundError::ProjectNotActive.into());
+        }
+
+        if investment.is_refunded {
+            return Err(CrowdfundError::RefundAlreadyClaimed.into());
         }
 
         // Process refund
@@ -274,6 +300,13 @@ impl Processor {
         investment.is_refunded = true;
 
         Investment::pack(investment, &mut investment_account.data.borrow_mut())?;
+
+        CrowdfundEvent::RefundClaimed {
+            project: project_account.key,
+            investor: investor.key,
+            amount: investment.amount,
+        }.emit();
+
         Ok(())
     }
 
@@ -287,21 +320,25 @@ impl Processor {
         }
 
         let mut project = Project::unpack(&project_account.data.borrow())?;
+        
+        // Verify owner
         if project.owner != *owner.key {
             return Err(CrowdfundError::InvalidAuthority.into());
         }
 
+        // Can only cancel active projects
         if project.status != ProjectStatus::Active {
-            return Err(CrowdfundError::InvalidStatusTransition.into());
+            return Err(CrowdfundError::ProjectNotActive.into());
         }
 
-        let clock = Clock::get()?;
-        if clock.unix_timestamp >= project.end_time {
-            return Err(CrowdfundError::FundingPeriodEnded.into());
-        }
-
+        // Update project status
         project.status = ProjectStatus::Cancelled;
         Project::pack(project, &mut project_account.data.borrow_mut())?;
+
+        CrowdfundEvent::ProjectCancelled {
+            project: project_account.key,
+            cancellation_time: Clock::get()?.unix_timestamp,
+        }.emit();
 
         Ok(())
     }

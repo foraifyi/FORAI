@@ -2,7 +2,11 @@ use solana_program::{
     instruction::{AccountMeta, Instruction},
     program_error::ProgramError,
     pubkey::Pubkey,
+    msg,
 };
+use std::convert::TryInto;
+use std::mem::size_of;
+use crate::state::Milestone;
 
 #[derive(Debug)]
 pub enum CrowdfundInstruction {
@@ -19,7 +23,6 @@ pub enum CrowdfundInstruction {
         target_amount: u64,
         start_time: i64,
         end_time: i64,
-        milestones: Vec<Milestone>,
     },
 
     /// Invest in a project
@@ -62,7 +65,66 @@ pub enum CrowdfundInstruction {
 
 impl CrowdfundInstruction {
     pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-        // ... implement instruction unpacking
-        unimplemented!()
+        let (&tag, rest) = input.split_first().ok_or(ProgramError::InvalidInstructionData)?;
+
+        Ok(match tag {
+            0 => {
+                let title: [u8; 32] = rest[..32].try_into().unwrap();
+                let description: [u8; 64] = rest[32..96].try_into().unwrap();
+                let target_amount = rest[96..104].try_into().map(u64::from_le_bytes).unwrap();
+                let start_time = rest[104..112].try_into().map(i64::from_le_bytes).unwrap();
+                let end_time = rest[112..120].try_into().map(i64::from_le_bytes).unwrap();
+
+                Self::InitializeProject {
+                    title,
+                    description,
+                    target_amount,
+                    start_time,
+                    end_time,
+                }
+            }
+            1 => {
+                let amount = rest[..8].try_into().map(u64::from_le_bytes).unwrap();
+                Self::Invest { amount }
+            }
+            2 => {
+                let milestone_index = rest[0];
+                Self::CompleteMilestone { milestone_index }
+            }
+            3 => Self::ClaimRefund,
+            4 => Self::CancelProject,
+            _ => return Err(ProgramError::InvalidInstructionData),
+        })
+    }
+
+    pub fn pack(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(size_of::<Self>());
+        match self {
+            Self::InitializeProject {
+                title,
+                description,
+                target_amount,
+                start_time,
+                end_time,
+            } => {
+                buf.push(0);
+                buf.extend_from_slice(title);
+                buf.extend_from_slice(description);
+                buf.extend_from_slice(&target_amount.to_le_bytes());
+                buf.extend_from_slice(&start_time.to_le_bytes());
+                buf.extend_from_slice(&end_time.to_le_bytes());
+            }
+            Self::Invest { amount } => {
+                buf.push(1);
+                buf.extend_from_slice(&amount.to_le_bytes());
+            }
+            Self::CompleteMilestone { milestone_index } => {
+                buf.push(2);
+                buf.push(*milestone_index);
+            }
+            Self::ClaimRefund => buf.push(3),
+            Self::CancelProject => buf.push(4),
+        }
+        buf
     }
 } 

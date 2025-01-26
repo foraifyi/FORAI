@@ -5,40 +5,98 @@ use solana_program::{
 };
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ProposalStatus {
+    Draft = 0,
+    Active = 1,
+    Canceled = 2,
+    Defeated = 3,
+    Succeeded = 4,
+    Queued = 5,
+    Expired = 6,
+    Executed = 7,
+}
+
+impl ProposalStatus {
+    fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(ProposalStatus::Draft),
+            1 => Some(ProposalStatus::Active),
+            2 => Some(ProposalStatus::Canceled),
+            3 => Some(ProposalStatus::Defeated),
+            4 => Some(ProposalStatus::Succeeded),
+            5 => Some(ProposalStatus::Queued),
+            6 => Some(ProposalStatus::Expired),
+            7 => Some(ProposalStatus::Executed),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum VoteType {
+    SingleChoice = 0,
+    MultiChoice = 1,
+    Ranked = 2,
+}
+
+impl VoteType {
+    fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(VoteType::SingleChoice),
+            1 => Some(VoteType::MultiChoice),
+            2 => Some(VoteType::Ranked),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct GovernanceConfig {
     pub is_initialized: bool,
-    pub authority: Pubkey,
-    pub governance_token: Pubkey,
-    pub proposal_program: Pubkey,
-    pub voting_delay: i64,          // Delay before voting starts
-    pub voting_period: i64,         // Duration of voting period
-    pub quorum_votes: u64,          // Minimum votes required
-    pub timelock_delay: i64,        // Delay before execution
-    pub guardian: Option<Pubkey>,   // Optional emergency guardian
-    pub is_active: bool,
+    pub admin: Pubkey,
+    pub name: [u8; 32],
+    pub voting_delay: u64,
+    pub voting_period: u64,
+    pub quorum_votes: u64,
+    pub timelock_delay: u64,
+    pub proposal_threshold: u64,
+    pub vote_threshold: u8,
+    pub creation_time: i64,
+    pub update_time: i64,
 }
 
 #[derive(Debug)]
 pub struct Proposal {
     pub is_initialized: bool,
+    pub governance: Pubkey,
     pub proposer: Pubkey,
-    pub title: [u8; 32],
-    pub description: [u8; 128],
-    pub voting_start: i64,
-    pub voting_end: i64,
-    pub votes_for: u64,
-    pub votes_against: u64,
+    pub title: [u8; 64],
+    pub description: [u8; 256],
+    pub vote_type: VoteType,
+    pub choices: [[u8; 32]; 8],
+    pub choice_count: u8,
     pub status: ProposalStatus,
-    pub execution_params: ExecutionParameters,
+    pub start_time: i64,
+    pub end_time: i64,
+    pub execute_time: i64,
+    pub for_votes: u64,
+    pub against_votes: u64,
+    pub abstain_votes: u64,
+    pub quorum_reached: bool,
+    pub creation_time: i64,
+    pub update_time: i64,
 }
 
 #[derive(Debug)]
 pub struct Vote {
+    pub is_initialized: bool,
+    pub proposal: Pubkey,
     pub voter: Pubkey,
-    pub amount: u64,
-    pub direction: VoteDirection,
-    pub timestamp: i64,
+    pub vote_weight: u64,
+    pub support: bool,
+    pub choices: [u8; 8],
+    pub voting_time: i64,
 }
 
 #[derive(Debug)]
@@ -76,52 +134,42 @@ impl IsInitialized for GovernanceConfig {
 }
 
 impl Pack for GovernanceConfig {
-    const LEN: usize = 122; // 1 + 32 + 32 + 32 + 8 + 8 + 8 + 8 + 33 + 1
+    const LEN: usize = 1 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 1 + 8 + 8; // 122 bytes
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         let src = array_ref![src, 0, GovernanceConfig::LEN];
         let (
             is_initialized,
-            authority,
-            governance_token,
-            proposal_program,
+            admin,
+            name,
             voting_delay,
             voting_period,
             quorum_votes,
             timelock_delay,
-            guardian_data,
-            is_active,
-        ) = array_refs![src, 1, 32, 32, 32, 8, 8, 8, 8, 33, 1];
+            proposal_threshold,
+            vote_threshold,
+            creation_time,
+            update_time,
+        ) = array_refs![src, 1, 32, 32, 8, 8, 8, 8, 8, 1, 8, 8];
 
-        let is_initialized = match is_initialized[0] {
-            0 => false,
-            1 => true,
+        let is_initialized = match is_initialized {
+            [0] => false,
+            [1] => true,
             _ => return Err(ProgramError::InvalidAccountData),
-        };
-
-        let is_active = match is_active[0] {
-            0 => false,
-            1 => true,
-            _ => return Err(ProgramError::InvalidAccountData),
-        };
-
-        let guardian = if guardian_data[0] == 0 {
-            None
-        } else {
-            Some(Pubkey::new_from_array(*array_ref![guardian_data, 1, 32]))
         };
 
         Ok(GovernanceConfig {
             is_initialized,
-            authority: Pubkey::new_from_array(*authority),
-            governance_token: Pubkey::new_from_array(*governance_token),
-            proposal_program: Pubkey::new_from_array(*proposal_program),
-            voting_delay: i64::from_le_bytes(*voting_delay),
-            voting_period: i64::from_le_bytes(*voting_period),
+            admin: Pubkey::new_from_array(*admin),
+            name: *name,
+            voting_delay: u64::from_le_bytes(*voting_delay),
+            voting_period: u64::from_le_bytes(*voting_period),
             quorum_votes: u64::from_le_bytes(*quorum_votes),
-            timelock_delay: i64::from_le_bytes(*timelock_delay),
-            guardian,
-            is_active,
+            timelock_delay: u64::from_le_bytes(*timelock_delay),
+            proposal_threshold: u64::from_le_bytes(*proposal_threshold),
+            vote_threshold: vote_threshold[0],
+            creation_time: i64::from_le_bytes(*creation_time),
+            update_time: i64::from_le_bytes(*update_time),
         })
     }
 
@@ -129,34 +177,29 @@ impl Pack for GovernanceConfig {
         let dst = array_mut_ref![dst, 0, GovernanceConfig::LEN];
         let (
             is_initialized_dst,
-            authority_dst,
-            governance_token_dst,
-            proposal_program_dst,
+            admin_dst,
+            name_dst,
             voting_delay_dst,
             voting_period_dst,
             quorum_votes_dst,
             timelock_delay_dst,
-            guardian_dst,
-            is_active_dst,
-        ) = mut_array_refs![dst, 1, 32, 32, 32, 8, 8, 8, 8, 33, 1];
+            proposal_threshold_dst,
+            vote_threshold_dst,
+            creation_time_dst,
+            update_time_dst,
+        ) = mut_array_refs![dst, 1, 32, 32, 8, 8, 8, 8, 8, 1, 8, 8];
 
         is_initialized_dst[0] = self.is_initialized as u8;
-        authority_dst.copy_from_slice(self.authority.as_ref());
-        governance_token_dst.copy_from_slice(self.governance_token.as_ref());
-        proposal_program_dst.copy_from_slice(self.proposal_program.as_ref());
+        admin_dst.copy_from_slice(self.admin.as_ref());
+        name_dst.copy_from_slice(&self.name);
         *voting_delay_dst = self.voting_delay.to_le_bytes();
         *voting_period_dst = self.voting_period.to_le_bytes();
         *quorum_votes_dst = self.quorum_votes.to_le_bytes();
         *timelock_delay_dst = self.timelock_delay.to_le_bytes();
-        
-        if let Some(guardian) = self.guardian {
-            guardian_dst[0] = 1;
-            guardian_dst[1..].copy_from_slice(guardian.as_ref());
-        } else {
-            guardian_dst[0] = 0;
-        }
-
-        is_active_dst[0] = self.is_active as u8;
+        *proposal_threshold_dst = self.proposal_threshold.to_le_bytes();
+        vote_threshold_dst[0] = self.vote_threshold;
+        *creation_time_dst = self.creation_time.to_le_bytes();
+        *update_time_dst = self.update_time.to_le_bytes();
     }
 }
 
@@ -168,40 +211,75 @@ impl IsInitialized for Proposal {
 }
 
 impl Pack for Proposal {
-    const LEN: usize = 315; // 1 + 32 + 8 + 8 + 128 + 128 + 8 + 8 + 1 + 1 + 8
+    const LEN: usize = 1 + 32 + 32 + 64 + 256 + 1 + 256 + 1 + 1 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 8 + 8; // 709 bytes
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         let src = array_ref![src, 0, Proposal::LEN];
         let (
             is_initialized,
+            governance,
             proposer,
             title,
             description,
-            voting_start,
-            voting_end,
-            votes_for,
-            votes_against,
+            vote_type,
+            choices,
+            choice_count,
             status,
-            execution_params,
-        ) = array_refs![src, 1, 32, 32, 128, 128, 8, 8, 1, 1, 8];
+            start_time,
+            end_time,
+            execute_time,
+            for_votes,
+            against_votes,
+            abstain_votes,
+            quorum_reached,
+            creation_time,
+            update_time,
+        ) = array_refs![src, 1, 32, 32, 64, 256, 1, 256, 1, 1, 8, 8, 8, 8, 8, 8, 1, 8, 8];
 
-        let is_initialized = match is_initialized[0] {
-            0 => false,
-            1 => true,
+        let is_initialized = match is_initialized {
+            [0] => false,
+            [1] => true,
             _ => return Err(ProgramError::InvalidAccountData),
         };
 
+        let vote_type = VoteType::from_u8(vote_type[0])
+            .ok_or(ProgramError::InvalidAccountData)?;
+
+        let status = ProposalStatus::from_u8(status[0])
+            .ok_or(ProgramError::InvalidAccountData)?;
+
+        let quorum_reached = match quorum_reached {
+            [0] => false,
+            [1] => true,
+            _ => return Err(ProgramError::InvalidAccountData),
+        };
+
+        let mut choices_array = [[0u8; 32]; 8];
+        for (i, chunk) in choices.chunks(32).enumerate() {
+            if i < 8 {
+                choices_array[i].copy_from_slice(chunk);
+            }
+        }
+
         Ok(Proposal {
             is_initialized,
+            governance: Pubkey::new_from_array(*governance),
             proposer: Pubkey::new_from_array(*proposer),
             title: *title,
             description: *description,
-            voting_start: i64::from_le_bytes(*voting_start),
-            voting_end: i64::from_le_bytes(*voting_end),
-            votes_for: u64::from_le_bytes(*votes_for),
-            votes_against: u64::from_le_bytes(*votes_against),
-            status: ProposalStatus::from_le_bytes(*status),
-            execution_params: ExecutionParameters::from_le_bytes(*execution_params),
+            vote_type,
+            choices: choices_array,
+            choice_count: choice_count[0],
+            status,
+            start_time: i64::from_le_bytes(*start_time),
+            end_time: i64::from_le_bytes(*end_time),
+            execute_time: i64::from_le_bytes(*execute_time),
+            for_votes: u64::from_le_bytes(*for_votes),
+            against_votes: u64::from_le_bytes(*against_votes),
+            abstain_votes: u64::from_le_bytes(*abstain_votes),
+            quorum_reached,
+            creation_time: i64::from_le_bytes(*creation_time),
+            update_time: i64::from_le_bytes(*update_time),
         })
     }
 
@@ -209,27 +287,51 @@ impl Pack for Proposal {
         let dst = array_mut_ref![dst, 0, Proposal::LEN];
         let (
             is_initialized_dst,
+            governance_dst,
             proposer_dst,
             title_dst,
             description_dst,
-            voting_start_dst,
-            voting_end_dst,
-            votes_for_dst,
-            votes_against_dst,
+            vote_type_dst,
+            choices_dst,
+            choice_count_dst,
             status_dst,
-            execution_params_dst,
-        ) = mut_array_refs![dst, 1, 32, 32, 128, 128, 8, 8, 1, 1, 8];
+            start_time_dst,
+            end_time_dst,
+            execute_time_dst,
+            for_votes_dst,
+            against_votes_dst,
+            abstain_votes_dst,
+            quorum_reached_dst,
+            creation_time_dst,
+            update_time_dst,
+        ) = mut_array_refs![dst, 1, 32, 32, 64, 256, 1, 256, 1, 1, 8, 8, 8, 8, 8, 8, 1, 8, 8];
 
         is_initialized_dst[0] = self.is_initialized as u8;
+        governance_dst.copy_from_slice(self.governance.as_ref());
         proposer_dst.copy_from_slice(self.proposer.as_ref());
         title_dst.copy_from_slice(&self.title);
         description_dst.copy_from_slice(&self.description);
-        *voting_start_dst = self.voting_start.to_le_bytes();
-        *voting_end_dst = self.voting_end.to_le_bytes();
-        *votes_for_dst = self.votes_for.to_le_bytes();
-        *votes_against_dst = self.votes_against.to_le_bytes();
-        *status_dst = self.status.to_le_bytes();
-        *execution_params_dst = self.execution_params.to_le_bytes();
+        vote_type_dst[0] = self.vote_type as u8;
+        
+        let mut choices_flat = [0u8; 256];
+        for (i, choice) in self.choices.iter().enumerate() {
+            if i < 8 {
+                choices_flat[i*32..(i+1)*32].copy_from_slice(choice);
+            }
+        }
+        choices_dst.copy_from_slice(&choices_flat);
+        
+        choice_count_dst[0] = self.choice_count;
+        status_dst[0] = self.status as u8;
+        *start_time_dst = self.start_time.to_le_bytes();
+        *end_time_dst = self.end_time.to_le_bytes();
+        *execute_time_dst = self.execute_time.to_le_bytes();
+        *for_votes_dst = self.for_votes.to_le_bytes();
+        *against_votes_dst = self.against_votes.to_le_bytes();
+        *abstain_votes_dst = self.abstain_votes.to_le_bytes();
+        quorum_reached_dst[0] = self.quorum_reached as u8;
+        *creation_time_dst = self.creation_time.to_le_bytes();
+        *update_time_dst = self.update_time.to_le_bytes();
     }
 }
 
@@ -241,36 +343,40 @@ impl IsInitialized for Vote {
 }
 
 impl Pack for Vote {
-    const LEN: usize = 52; // 1 + 32 + 32 + 1 + 8 + 8
+    const LEN: usize = 1 + 32 + 32 + 8 + 1 + 8 + 8; // 90 bytes
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         let src = array_ref![src, 0, Vote::LEN];
         let (
             is_initialized,
+            proposal,
             voter,
-            amount,
-            direction,
-            timestamp,
-        ) = array_refs![src, 1, 32, 32, 1, 8, 8];
+            vote_weight,
+            support,
+            choices,
+            voting_time,
+        ) = array_refs![src, 1, 32, 32, 8, 1, 8, 8];
 
-        let is_initialized = match is_initialized[0] {
-            0 => false,
-            1 => true,
+        let is_initialized = match is_initialized {
+            [0] => false,
+            [1] => true,
             _ => return Err(ProgramError::InvalidAccountData),
         };
 
-        let direction = match direction[0] {
-            0 => VoteDirection::Against,
-            1 => VoteDirection::For,
+        let support = match support {
+            [0] => false,
+            [1] => true,
             _ => return Err(ProgramError::InvalidAccountData),
         };
 
         Ok(Vote {
             is_initialized,
+            proposal: Pubkey::new_from_array(*proposal),
             voter: Pubkey::new_from_array(*voter),
-            amount: u64::from_le_bytes(*amount),
-            direction,
-            timestamp: i64::from_le_bytes(*timestamp),
+            vote_weight: u64::from_le_bytes(*vote_weight),
+            support,
+            choices: *choices,
+            voting_time: i64::from_le_bytes(*voting_time),
         })
     }
 
@@ -278,17 +384,21 @@ impl Pack for Vote {
         let dst = array_mut_ref![dst, 0, Vote::LEN];
         let (
             is_initialized_dst,
+            proposal_dst,
             voter_dst,
-            amount_dst,
-            direction_dst,
-            timestamp_dst,
-        ) = mut_array_refs![dst, 1, 32, 32, 1, 8, 8];
+            vote_weight_dst,
+            support_dst,
+            choices_dst,
+            voting_time_dst,
+        ) = mut_array_refs![dst, 1, 32, 32, 8, 1, 8, 8];
 
         is_initialized_dst[0] = self.is_initialized as u8;
+        proposal_dst.copy_from_slice(self.proposal.as_ref());
         voter_dst.copy_from_slice(self.voter.as_ref());
-        *amount_dst = self.amount.to_le_bytes();
-        direction_dst[0] = self.direction.to_le_bytes()[0];
-        *timestamp_dst = self.timestamp.to_le_bytes();
+        *vote_weight_dst = self.vote_weight.to_le_bytes();
+        support_dst[0] = self.support as u8;
+        choices_dst.copy_from_slice(&self.choices);
+        *voting_time_dst = self.voting_time.to_le_bytes();
     }
 }
 
