@@ -1,0 +1,12 @@
+[package]
+name = "forai-solana"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+solana-program = "1.17.7"
+thiserror = "1.0"
+arrayref = "0.3.7"
+
+[lib]
+crate-type = ["cdylib", "lib"] 

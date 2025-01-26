@@ -1,0 +1,29 @@
+{
+  "name": "forai-solana",
+  "version": "0.1.0",
+  "description": "Solana integration for FORAI project",
+  "scripts": {
+    "start-validator": "bash scripts/start-validator.sh",
+    "build": "cargo build-bpf",
+    "deploy": "ts-node scripts/deploy.ts",
+    "test:setup": "npm run start-validator && npm run build && npm run deploy",
+    "test:unit": "cargo test",
+    "test:integration": "mocha -r ts-node/register 'tests/**/*.test.ts'",
+    "test": "npm run test:setup && npm run test:unit && npm run test:integration",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.87.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
